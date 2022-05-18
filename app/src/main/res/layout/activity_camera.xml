@@ -34,8 +34,12 @@
         app:layout_constraintTop_toTopOf="parent"/>
 
     <me.penguinpistol.facedetectioncamera.DetectionGraphic
-        android:layout_width="match_parent"
-        android:layout_height="match_parent"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        app:layout_constraintTop_toTopOf="@id/view_finder"
+        app:layout_constraintStart_toStartOf="@id/view_finder"
+        app:layout_constraintEnd_toEndOf="@id/view_finder"
+        app:layout_constraintBottom_toBottomOf="@id/view_finder"
         android:id="@+id/detection_graphic"/>
 
 </androidx.constraintlayout.widget.ConstraintLayout>

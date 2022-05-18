@@ -2,17 +2,19 @@ package me.penguinpistol.facedetectioncamera;
 
 import android.app.Activity;
 import android.content.Context;
-import android.graphics.Matrix;
+import android.graphics.Point;
+import android.graphics.Rect;
+import android.graphics.RectF;
 import android.hardware.camera2.CameraAccessException;
 import android.hardware.camera2.CameraCharacteristics;
 import android.hardware.camera2.CameraManager;
 import android.media.Image;
-import android.util.Size;
+import android.util.Log;
 import android.util.SparseIntArray;
 import android.view.Surface;
+import android.view.View;
 
 import androidx.annotation.NonNull;
-import androidx.annotation.Nullable;
 import androidx.annotation.OptIn;
 import androidx.camera.core.ImageAnalysis;
 import androidx.camera.core.ImageProxy;
@@ -25,6 +27,8 @@ import com.google.mlkit.vision.face.FaceDetectorOptions;
 
 public class FaceDetectionAnalyzer implements ImageAnalysis.Analyzer {
 
+    private static final String TAG = "FaceDetectionAnalyzer";
+
     private static final SparseIntArray ORIENTATIONS = new SparseIntArray();
     static {
         ORIENTATIONS.append(Surface.ROTATION_0, 0);
@@ -33,18 +37,36 @@ public class FaceDetectionAnalyzer implements ImageAnalysis.Analyzer {
         ORIENTATIONS.append(Surface.ROTATION_270, 270);
     }
 
-    private final Activity mActivity;
     private final FaceDetector mDetector;
     private final FaceDetectionListener mListener;
 
+    private final Point displaySize;
+    private final RectF targetRect;
+
     public FaceDetectionAnalyzer(Activity activity, FaceDetectionListener l) {
         FaceDetectorOptions options = new FaceDetectorOptions.Builder()
+                .setContourMode(FaceDetectorOptions.CONTOUR_MODE_ALL)
                 .setLandmarkMode(FaceDetectorOptions.LANDMARK_MODE_ALL)
                 .build();
 
         mDetector = FaceDetection.getClient(options);
-        mActivity = activity;
         mListener = l;
+
+        displaySize = new Point();
+        activity.getWindowManager().getDefaultDisplay().getSize(displaySize);
+
+        float marginHorizontal = displaySize.x * 0.24f;
+        float heightRatio = 1.4f;
+
+        targetRect = new RectF(
+                marginHorizontal
+                , 0
+                , displaySize.x - marginHorizontal
+                , 0
+        );
+        float height = targetRect.width() * heightRatio;
+        targetRect.top = (displaySize.y >> 1) - height * 0.5f;
+        targetRect.bottom = targetRect.top + height;
     }
 
     @OptIn(markerClass = androidx.camera.core.ExperimentalGetImage.class)
@@ -52,12 +74,6 @@ public class FaceDetectionAnalyzer implements ImageAnalysis.Analyzer {
     public void analyze(@NonNull ImageProxy imageProxy) {
         Image mediaImage = imageProxy.getImage();
         if(mediaImage != null) {
-//            int rotate;
-//            try {
-//                rotate = getRotationCompensation("0", mActivity, true);
-//            } catch (CameraAccessException e) {
-//                rotate = imageProxy.getImageInfo().getRotationDegrees();
-//            }
             int rotate = imageProxy.getImageInfo().getRotationDegrees();
             InputImage inputImage = InputImage.fromMediaImage(mediaImage, rotate);
 
@@ -66,7 +82,10 @@ public class FaceDetectionAnalyzer implements ImageAnalysis.Analyzer {
                         if(mListener != null) {
                             if (faces.size() > 0) {
                                 Face face = faces.get(0);
-                                mListener.onDetected(face, rotate);
+                                if(checkFace(face)) {
+                                    Log.d(TAG, "OK!!!!!!");
+                                }
+                                mListener.onDetected(face, targetRect, rotate);
                             }
                         }
                     })
@@ -75,37 +94,11 @@ public class FaceDetectionAnalyzer implements ImageAnalysis.Analyzer {
         }
     }
 
-    @OptIn(markerClass = androidx.camera.core.ExperimentalAnalyzer.class)
-    @Nullable
-    @Override
-    public Size getTargetResolutionOverride() {
-        return null;
-    }
+    private boolean checkFace(Face face) {
+        Rect bound = face.getBoundingBox();
 
-    @OptIn(markerClass = androidx.camera.core.ExperimentalAnalyzer.class)
-    @Override
-    public int getTargetCoordinateSystem() {
-        return 0;
-    }
 
-    @Override
-    public void updateTransform(@Nullable Matrix matrix) {
 
-    }
-
-    private int getRotationCompensation(String cameraId, Activity activity, boolean isFrontFacing) throws CameraAccessException {
-        int deviceRotate = activity.getWindowManager().getDefaultDisplay().getRotation();
-        int rotationCompensation = ORIENTATIONS.get(deviceRotate);
-
-        CameraManager cameraManager = (CameraManager) activity.getSystemService(Context.CAMERA_SERVICE);
-        int sensorOrientation = cameraManager.getCameraCharacteristics(cameraId).get(CameraCharacteristics.SENSOR_ORIENTATION);
-
-        if(isFrontFacing) {
-            rotationCompensation = (sensorOrientation + rotationCompensation) % 360;
-        } else {
-            rotationCompensation = (sensorOrientation - rotationCompensation + 360) % 360;
-        }
-
-        return rotationCompensation;
+        return false;
     }
 }

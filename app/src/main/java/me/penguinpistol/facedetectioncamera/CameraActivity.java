@@ -6,16 +6,21 @@ import android.content.pm.PackageManager;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.Matrix;
+import android.graphics.Point;
+import android.graphics.RectF;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Looper;
 import android.provider.MediaStore;
 import android.util.Log;
+import android.util.Size;
+import android.util.TypedValue;
 import android.widget.Toast;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.OptIn;
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.camera.core.AspectRatio;
 import androidx.camera.core.CameraSelector;
 import androidx.camera.core.ImageAnalysis;
 import androidx.camera.core.ImageCapture;
@@ -31,6 +36,8 @@ import com.google.common.util.concurrent.ListenableFuture;
 import com.google.mlkit.vision.face.Face;
 
 import java.nio.ByteBuffer;
+import java.text.SimpleDateFormat;
+import java.util.Locale;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ScheduledExecutorService;
 
@@ -48,7 +55,6 @@ public class CameraActivity extends AppCompatActivity {
     private ImageCapture imageCapture = null;
 
     private ScheduledExecutorService captureExecutor = null;
-    private FaceDetectionAnalyzer faceDetectionAnalyzer;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -63,22 +69,14 @@ public class CameraActivity extends AppCompatActivity {
         }
 
         mBinding.imageCaptureButton.setOnClickListener(v -> {
-            takePhoto();
+//            takePhoto();
 
             // 파일로 저장
-//            String name = new SimpleDateFormat(FILENAME_FORMAT, Locale.getDefault()).format(System.currentTimeMillis());
-//            takePhoto(name);
+            String name = new SimpleDateFormat(FILENAME_FORMAT, Locale.getDefault()).format(System.currentTimeMillis());
+            takePhoto(name);
         });
 
 
-        faceDetectionAnalyzer = new FaceDetectionAnalyzer(this, new FaceDetectionListener() {
-            @Override
-            public void onDetected(Face face, int rotate) {
-                HandlerCompat.createAsync(Looper.getMainLooper()).post(() -> {
-                    mBinding.detectionGraphic.setFace(face, rotate);
-                });
-            }
-        });
     }
 
     @Override
@@ -197,30 +195,52 @@ public class CameraActivity extends AppCompatActivity {
     }
 
     private void startCamera() {
-        ListenableFuture<ProcessCameraProvider> cameraProviderFuture = ProcessCameraProvider.getInstance(this);
+        Point displaySize = new Point();
+        getWindowManager().getDefaultDisplay().getSize(displaySize);
 
+        TypedValue tv = new TypedValue();
+        getTheme().resolveAttribute(android.R.attr.actionBarSize, tv, true);
+        int actionBarHeight = TypedValue.complexToDimensionPixelSize(tv.data, getResources().getDisplayMetrics());
+
+        Size previewSize = new Size(displaySize.x, displaySize.y);
+        Size outputSize = new Size(720, 1280);
+
+        Log.d("CameraActivity", "------------------------------------------------");
+        Log.d("CameraActivity", "action bar >> " + actionBarHeight);
+        Log.d("CameraActivity", "preview Size >> " + previewSize.toString());
+        Log.d("CameraActivity", "------------------------------------------------");
+
+        FaceDetectionAnalyzer faceDetectionAnalyzer = new FaceDetectionAnalyzer(this, new FaceDetectionListener() {
+            @Override
+            public void onDetected(Face face, RectF targetRect, int rotate) {
+                HandlerCompat.createAsync(Looper.getMainLooper()).post(() -> {
+                    mBinding.detectionGraphic.setFace(face, targetRect, rotate);
+                });
+            }
+        });
+
+        ListenableFuture<ProcessCameraProvider> cameraProviderFuture = ProcessCameraProvider.getInstance(this);
         cameraProviderFuture.addListener(() -> {
             try {
                 ProcessCameraProvider cameraProvider = cameraProviderFuture.get();
+                cameraProvider.unbindAll();
 
                 Preview preview = new Preview.Builder()
-//                        .setTargetAspectRatio(AspectRatio.RATIO_16_9)
+                        .setTargetResolution(previewSize)
                         .build();
                 preview.setSurfaceProvider(mBinding.viewFinder.getSurfaceProvider());
 
-                imageCapture = new ImageCapture.Builder()
-//                        .setTargetAspectRatio(AspectRatio.RATIO_16_9)
-                        .build();
-
-                CameraSelector cameraSelector = CameraSelector.DEFAULT_FRONT_CAMERA;
-
                 ImageAnalysis imageAnalysis = new ImageAnalysis.Builder()
-//                        .setTargetAspectRatio(AspectRatio.RATIO_16_9)
+                        .setTargetResolution(previewSize)
                         .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
                         .build();
                 imageAnalysis.setAnalyzer(ContextCompat.getMainExecutor(this), faceDetectionAnalyzer);
 
-                cameraProvider.unbindAll();
+                imageCapture = new ImageCapture.Builder()
+                        .setTargetResolution(outputSize)
+                        .build();
+
+                CameraSelector cameraSelector = CameraSelector.DEFAULT_FRONT_CAMERA;
                 cameraProvider.bindToLifecycle(this, cameraSelector, preview, imageCapture, imageAnalysis);
             } catch (ExecutionException | InterruptedException e) {
                 e.printStackTrace();

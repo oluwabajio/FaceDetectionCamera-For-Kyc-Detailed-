@@ -5,16 +5,19 @@ import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
 import android.graphics.Point;
+import android.graphics.PointF;
 import android.graphics.Rect;
 import android.graphics.RectF;
 import android.text.TextPaint;
 import android.util.AttributeSet;
+import android.util.Log;
 import android.view.View;
 import android.view.WindowManager;
 
 import androidx.annotation.Nullable;
 
 import com.google.mlkit.vision.face.Face;
+import com.google.mlkit.vision.face.FaceContour;
 
 import java.util.Locale;
 
@@ -57,6 +60,12 @@ public class DetectionGraphic extends View {
     }
 
     @Override
+    protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
+        super.onMeasure(widthMeasureSpec, heightMeasureSpec);
+        Log.d("CameraActivity", "measure >> " + getMeasuredWidth() + ", " + getMeasuredHeight());
+    }
+
+    @Override
     protected void onDraw(Canvas canvas) {
         super.onDraw(canvas);
 
@@ -71,8 +80,19 @@ public class DetectionGraphic extends View {
             canvas.drawText(strFaceAngle, 20, 170, textPaint);
             canvas.drawText("rotate : " + rotate, 20, 230, textPaint);
 
-            canvas.drawRect(face.getBoundingBox(), faceRectPaint);
+            canvas.drawRect(targetRect, faceRectPaint);
             canvas.drawRect(faceBound, faceConvertPaint);
+
+            if(face != null) {
+                for(FaceContour faceContour : face.getAllContours()) {
+                    for (PointF p : faceContour.getPoints()) {
+                        drawCircle(canvas, p);
+                    }
+                }
+            }
+
+            canvas.drawCircle(0, 0, 10, faceRectPaint);
+            canvas.drawCircle(1080, 2047, 10, faceRectPaint);
         }
     }
 
@@ -80,18 +100,27 @@ public class DetectionGraphic extends View {
         canvas.drawCircle(cx, cy, 5, faceRectPaint);
     }
 
+    private void drawCircle(Canvas canvas, PointF p) {
+        canvas.drawCircle(displaySize.x - p.x, p.y, 5, faceRectPaint);
+    }
+
     private int rotate;
     private RectF faceBound;
+    private RectF targetRect;
 
-    public void setFace(Face face, int rotate) {
+    public void setFace(Face face, RectF targetRect, int rotate) {
         this.face = face;
         this.rotate = rotate;
 
         Rect bound = face.getBoundingBox();
-        faceBound = new RectF(face.getBoundingBox());
+        faceBound = new RectF(
+                displaySize.x - bound.left
+                , bound.top
+                , displaySize.x - bound.right
+                , bound.bottom
+        );
 
-//        faceBound.left = bound.right + (displaySize.x >> 1);
-//        faceBound.right = bound.left + (displaySize.x >> 1);
+        this.targetRect = targetRect;
 
         invalidate();
     }
