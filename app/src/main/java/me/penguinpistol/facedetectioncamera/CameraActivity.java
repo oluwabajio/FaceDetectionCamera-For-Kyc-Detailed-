@@ -6,21 +6,17 @@ import android.content.pm.PackageManager;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.Matrix;
-import android.graphics.Point;
 import android.graphics.RectF;
 import android.os.Build;
 import android.os.Bundle;
-import android.os.Looper;
 import android.provider.MediaStore;
 import android.util.Log;
 import android.util.Size;
-import android.util.TypedValue;
 import android.widget.Toast;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.OptIn;
 import androidx.appcompat.app.AppCompatActivity;
-import androidx.camera.core.AspectRatio;
 import androidx.camera.core.CameraSelector;
 import androidx.camera.core.ImageAnalysis;
 import androidx.camera.core.ImageCapture;
@@ -28,16 +24,14 @@ import androidx.camera.core.ImageCaptureException;
 import androidx.camera.core.ImageProxy;
 import androidx.camera.core.Preview;
 import androidx.camera.lifecycle.ProcessCameraProvider;
+import androidx.camera.view.PreviewView;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
-import androidx.core.os.HandlerCompat;
 
 import com.google.common.util.concurrent.ListenableFuture;
 import com.google.mlkit.vision.face.Face;
 
 import java.nio.ByteBuffer;
-import java.text.SimpleDateFormat;
-import java.util.Locale;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ScheduledExecutorService;
 
@@ -53,6 +47,7 @@ public class CameraActivity extends AppCompatActivity {
 
     private ActivityCameraBinding mBinding;
     private ImageCapture imageCapture = null;
+    private ImageAnalysis imageAnalysis = null;
 
     private ScheduledExecutorService captureExecutor = null;
 
@@ -68,15 +63,13 @@ public class CameraActivity extends AppCompatActivity {
             ActivityCompat.requestPermissions(this, REQUIRED_PERMISSIONS, REQUEST_CODE_PERMISSION);
         }
 
-        mBinding.imageCaptureButton.setOnClickListener(v -> {
-//            takePhoto();
-
-            // 파일로 저장
-            String name = new SimpleDateFormat(FILENAME_FORMAT, Locale.getDefault()).format(System.currentTimeMillis());
-            takePhoto(name);
-        });
-
-
+//        mBinding.imageCaptureButton.setOnClickListener(v -> {
+////            takePhoto();
+//
+//            // 파일로 저장
+//            String name = new SimpleDateFormat(FILENAME_FORMAT, Locale.getDefault()).format(System.currentTimeMillis());
+//            takePhoto(name);
+//        });
     }
 
     @Override
@@ -94,6 +87,10 @@ public class CameraActivity extends AppCompatActivity {
     @Override
     protected void onStop() {
         super.onStop();
+
+        if(imageAnalysis != null) {
+            imageAnalysis.clearAnalyzer();
+        }
 
 //        if(captureExecutor != null) {
 //            captureExecutor.shutdown();
@@ -123,7 +120,7 @@ public class CameraActivity extends AppCompatActivity {
                 public void onCaptureSuccess(@NonNull ImageProxy imageProxy) {
                     super.onCaptureSuccess(imageProxy);
                     Bitmap bitmap = convertBitmap(imageProxy);
-                    mBinding.captureImage.setImageBitmap(bitmap);
+//                    mBinding.captureImage.setImageBitmap(bitmap);
 //                    imageProxy.close();
                     imageProxy.close();
                 }
@@ -195,57 +192,42 @@ public class CameraActivity extends AppCompatActivity {
     }
 
     private void startCamera() {
-        Point displaySize = new Point();
-        getWindowManager().getDefaultDisplay().getSize(displaySize);
+        Size imageSize = new Size(720, 1280);
+        mBinding.detectionGraphic.setImageSize(imageSize);
+        mBinding.viewFinder.setScaleType(PreviewView.ScaleType.FILL_CENTER);
 
-        TypedValue tv = new TypedValue();
-        getTheme().resolveAttribute(android.R.attr.actionBarSize, tv, true);
-        int actionBarHeight = TypedValue.complexToDimensionPixelSize(tv.data, getResources().getDisplayMetrics());
-
-        Size previewSize = new Size(displaySize.x, displaySize.y);
-        Size outputSize = new Size(720, 1280);
-
-        Log.d("CameraActivity", "------------------------------------------------");
-        Log.d("CameraActivity", "action bar >> " + actionBarHeight);
-        Log.d("CameraActivity", "preview Size >> " + previewSize.toString());
-        Log.d("CameraActivity", "------------------------------------------------");
-
-        FaceDetectionAnalyzer faceDetectionAnalyzer = new FaceDetectionAnalyzer(this, new FaceDetectionListener() {
+        FaceDetectionAnalyzer faceDetectionAnalyzer = new FaceDetectionAnalyzer(mBinding.detectionGraphic, new FaceDetectionListener() {
             @Override
             public void onDetected(Face face, RectF targetRect, int rotate) {
-                HandlerCompat.createAsync(Looper.getMainLooper()).post(() -> {
-                    mBinding.detectionGraphic.setFace(face, targetRect, rotate);
-                });
+                takePhoto();
             }
         });
 
         ListenableFuture<ProcessCameraProvider> cameraProviderFuture = ProcessCameraProvider.getInstance(this);
         cameraProviderFuture.addListener(() -> {
             try {
-                ProcessCameraProvider cameraProvider = cameraProviderFuture.get();
-                cameraProvider.unbindAll();
-
                 Preview preview = new Preview.Builder()
-                        .setTargetResolution(previewSize)
+                        .setTargetResolution(imageSize)
                         .build();
                 preview.setSurfaceProvider(mBinding.viewFinder.getSurfaceProvider());
 
-                ImageAnalysis imageAnalysis = new ImageAnalysis.Builder()
-                        .setTargetResolution(previewSize)
+                imageAnalysis = new ImageAnalysis.Builder()
+                        .setTargetResolution(imageSize)
                         .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
                         .build();
                 imageAnalysis.setAnalyzer(ContextCompat.getMainExecutor(this), faceDetectionAnalyzer);
 
                 imageCapture = new ImageCapture.Builder()
-                        .setTargetResolution(outputSize)
+                        .setTargetResolution(imageSize)
                         .build();
 
                 CameraSelector cameraSelector = CameraSelector.DEFAULT_FRONT_CAMERA;
+                ProcessCameraProvider cameraProvider = cameraProviderFuture.get();
+                cameraProvider.unbindAll();
                 cameraProvider.bindToLifecycle(this, cameraSelector, preview, imageCapture, imageAnalysis);
             } catch (ExecutionException | InterruptedException e) {
                 e.printStackTrace();
             }
-
         }, ContextCompat.getMainExecutor(this));
     }
 
