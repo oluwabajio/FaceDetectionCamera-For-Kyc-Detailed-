@@ -1,17 +1,17 @@
 package me.penguinpistol.facedetectioncamera;
 
-import android.graphics.Rect;
+import android.graphics.PointF;
 import android.graphics.RectF;
 import android.media.Image;
 import android.util.Log;
-import android.util.SparseIntArray;
-import android.view.Surface;
+import android.util.Size;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.OptIn;
 import androidx.camera.core.ImageAnalysis;
 import androidx.camera.core.ImageProxy;
 
+import com.google.android.material.math.MathUtils;
 import com.google.mlkit.vision.common.InputImage;
 import com.google.mlkit.vision.face.Face;
 import com.google.mlkit.vision.face.FaceContour;
@@ -19,34 +19,48 @@ import com.google.mlkit.vision.face.FaceDetection;
 import com.google.mlkit.vision.face.FaceDetector;
 import com.google.mlkit.vision.face.FaceDetectorOptions;
 
+import java.util.List;
 import java.util.Locale;
 
 public class FaceDetectionAnalyzer implements ImageAnalysis.Analyzer {
-
     private static final String TAG = "FaceDetectionAnalyzer";
 
-    private static final SparseIntArray ORIENTATIONS = new SparseIntArray();
-    static {
-        ORIENTATIONS.append(Surface.ROTATION_0, 0);
-        ORIENTATIONS.append(Surface.ROTATION_90, 90);
-        ORIENTATIONS.append(Surface.ROTATION_180, 180);
-        ORIENTATIONS.append(Surface.ROTATION_270, 270);
-    }
-
     private final FaceDetector mDetector;
-    private final GraphicOverlay graphic;
+    private final GraphicOverlay mGraphic;
     private final FaceDetectionListener mListener;
 
-    public FaceDetectionAnalyzer(GraphicOverlay graphic, FaceDetectionListener l) {
+    private final Size imageSize;
+    private final RectF targetRect;
+
+    private boolean isDetected = false;
+
+    public void setDetected(boolean isDetected) {
+        this.isDetected = isDetected;
+    }
+
+    public FaceDetectionAnalyzer(Size imageSize, float targetSize, GraphicOverlay graphic, FaceDetectionListener l) {
         FaceDetectorOptions options = new FaceDetectorOptions.Builder()
                 .setContourMode(FaceDetectorOptions.CONTOUR_MODE_ALL)
                 .setLandmarkMode(FaceDetectorOptions.LANDMARK_MODE_ALL)
                 .build();
 
         mDetector = FaceDetection.getClient(options);
+        mGraphic = graphic;
         mListener = l;
 
-        this.graphic = graphic;
+        this.imageSize = imageSize;
+        this.targetRect = new RectF(
+                0,
+                0,
+                imageSize.getWidth() * targetSize,
+                imageSize.getWidth() * targetSize * 1.4f
+        );
+        targetRect.offset(
+                (imageSize.getWidth()  - targetRect.width()) * 0.5f,
+                (imageSize.getHeight()  - targetRect.height()) * 0.5f
+        );
+
+        mGraphic.init(imageSize, targetRect);
     }
 
     @OptIn(markerClass = androidx.camera.core.ExperimentalGetImage.class)
@@ -61,13 +75,17 @@ public class FaceDetectionAnalyzer implements ImageAnalysis.Analyzer {
                     .addOnSuccessListener(faces -> {
                         if (faces.size() > 0) {
                             Face face = faces.get(0);
-                            FaceContour contour = face.getContour(FaceContour.FACE);
 
+                            if (!isDetected && checkFace(face)) {
+                                Log.d(TAG, "analyze: OK!!");
+                                isDetected = true;
+                                mListener.onDetected(inputImage);
+//                                mListener.onDetected(inputImage);
+                            }
+
+                            FaceContour contour = face.getContour(FaceContour.FACE);
                             if(contour != null) {
-                                graphic.setFace(contour);
-                                if (checkFace(face)) {
-                                    Log.d(TAG, "OK!!!!!!");
-                                }
+                                mGraphic.setFaceContour(contour);
                             }
                         }
                     })
@@ -77,16 +95,42 @@ public class FaceDetectionAnalyzer implements ImageAnalysis.Analyzer {
     }
 
     private boolean checkFace(Face face) {
-        Rect bound = face.getBoundingBox();
+        FaceContour contour = face.getContour(FaceContour.FACE);
 
-//        Log.d("CameraActivity", getRectInfo(bound));
+        if(contour == null) {
+            return false;
+        }
 
-        return false;
+        RectF bound = getFaceRect(contour.getPoints());
+
+        float widthRatio = bound.width() / targetRect.width();
+        float centerDistance = MathUtils.dist(bound.centerX(), bound.centerY(), targetRect.centerX(), targetRect.centerY());
+
+        float angleX = Math.abs(face.getHeadEulerAngleX());
+        float angleY = Math.abs(face.getHeadEulerAngleY());
+        float angleZ = Math.abs(face.getHeadEulerAngleZ());
+
+        String debugText = String.format(Locale.getDefault(),
+                "bound : %f\ntarget : %f\nratio : %f\nbound center: [%f, %f]\ntarget center[%f, %f]\ndistance: %f\nangle[%f, %f, %f]",
+                bound.width(), targetRect.width(), widthRatio,
+                bound.centerX(), bound.centerY(), targetRect.centerX(), targetRect.centerY(), centerDistance,
+                angleX, angleY, angleZ
+                );
+        mGraphic.setDebugText(debugText);
+
+        boolean checkRatio = (0.95f < widthRatio && widthRatio < 1.05f);
+        boolean checkDistance = (centerDistance < 30);
+        boolean checkAngle = (angleX < 7 && angleY < 7 && angleZ < 7);
+
+        return checkRatio && checkDistance && checkAngle;
     }
 
-    private String getRectInfo(RectF rect) {
-        return String.format(Locale.getDefault(),
-                "Rect[%f, %f, %f, %f]",
-                rect.left, rect.top, rect.right, rect.bottom);
+    private RectF getFaceRect(List<PointF> landmarks) {
+        return new RectF(
+                (float)landmarks.stream().mapToDouble(x -> x.x).min().orElse(0),
+                (float)landmarks.stream().mapToDouble(x -> x.y).min().orElse(0),
+                (float)landmarks.stream().mapToDouble(x -> x.x).max().orElse(0),
+                (float)landmarks.stream().mapToDouble(x -> x.y).max().orElse(0)
+        );
     }
 }

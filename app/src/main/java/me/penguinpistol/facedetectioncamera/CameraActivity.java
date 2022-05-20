@@ -7,6 +7,7 @@ import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.Matrix;
 import android.graphics.RectF;
+import android.media.Image;
 import android.os.Build;
 import android.os.Bundle;
 import android.provider.MediaStore;
@@ -29,11 +30,11 @@ import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
 
 import com.google.common.util.concurrent.ListenableFuture;
+import com.google.mlkit.vision.common.InputImage;
 import com.google.mlkit.vision.face.Face;
 
 import java.nio.ByteBuffer;
 import java.util.concurrent.ExecutionException;
-import java.util.concurrent.ScheduledExecutorService;
 
 import me.penguinpistol.facedetectioncamera.databinding.ActivityCameraBinding;
 
@@ -48,8 +49,7 @@ public class CameraActivity extends AppCompatActivity {
     private ActivityCameraBinding mBinding;
     private ImageCapture imageCapture = null;
     private ImageAnalysis imageAnalysis = null;
-
-    private ScheduledExecutorService captureExecutor = null;
+    private FaceDetectionAnalyzer faceDetectionAnalyzer = null;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -62,7 +62,6 @@ public class CameraActivity extends AppCompatActivity {
         } else {
             ActivityCompat.requestPermissions(this, REQUIRED_PERMISSIONS, REQUEST_CODE_PERMISSION);
         }
-
 //        mBinding.imageCaptureButton.setOnClickListener(v -> {
 ////            takePhoto();
 //
@@ -70,31 +69,25 @@ public class CameraActivity extends AppCompatActivity {
 //            String name = new SimpleDateFormat(FILENAME_FORMAT, Locale.getDefault()).format(System.currentTimeMillis());
 //            takePhoto(name);
 //        });
+        mBinding.captureImage.setOnClickListener(v -> {
+            if(faceDetectionAnalyzer != null) {
+                faceDetectionAnalyzer.setDetected(false);
+                imageAnalysis.setAnalyzer(ContextCompat.getMainExecutor(this), faceDetectionAnalyzer);
+            }
+        });
     }
 
     @Override
     protected void onResume() {
         super.onResume();
-        if(captureExecutor == null) {
-            Log.i("captureExecutor", "run!!");
-//            captureExecutor = Executors.newSingleThreadScheduledExecutor();
-//            captureExecutor.scheduleAtFixedRate(() -> {
-//                takePhoto();
-//            }, 0, 1, TimeUnit.MILLISECONDS);
-        }
     }
 
     @Override
     protected void onStop() {
         super.onStop();
 
-        if(imageAnalysis != null) {
-            imageAnalysis.clearAnalyzer();
-        }
-
-//        if(captureExecutor != null) {
-//            captureExecutor.shutdown();
-//            captureExecutor = null;
+//        if(imageAnalysis != null) {
+//            imageAnalysis.clearAnalyzer();
 //        }
     }
 
@@ -105,7 +98,7 @@ public class CameraActivity extends AppCompatActivity {
             if(allPermissionGranted()) {
                 startCamera();
             } else {
-                Toast.makeText(this, "Permissions not granted", Toast.LENGTH_SHORT).show();
+                Toast.makeText(this, "카메라 권한을 허용 해주셔야 서비스 이용이 가능합니다.", Toast.LENGTH_SHORT).show();
                 finish();
             }
         }
@@ -120,9 +113,9 @@ public class CameraActivity extends AppCompatActivity {
                 public void onCaptureSuccess(@NonNull ImageProxy imageProxy) {
                     super.onCaptureSuccess(imageProxy);
                     Bitmap bitmap = convertBitmap(imageProxy);
-//                    mBinding.captureImage.setImageBitmap(bitmap);
-//                    imageProxy.close();
+                    mBinding.captureImage.setImageBitmap(bitmap);
                     imageProxy.close();
+//                    imageAnalysis.clearAnalyzer();
                 }
 
                 @Override
@@ -133,7 +126,6 @@ public class CameraActivity extends AppCompatActivity {
             });
         }
     }
-
     private void takePhoto(String name) {
         ImageCapture imageCapture = this.imageCapture;
         if(imageCapture == null) {
@@ -192,14 +184,16 @@ public class CameraActivity extends AppCompatActivity {
     }
 
     private void startCamera() {
+        float targetSize = 0.48f;
+
         Size imageSize = new Size(720, 1280);
-        mBinding.detectionGraphic.setImageSize(imageSize);
         mBinding.viewFinder.setScaleType(PreviewView.ScaleType.FILL_CENTER);
 
-        FaceDetectionAnalyzer faceDetectionAnalyzer = new FaceDetectionAnalyzer(mBinding.detectionGraphic, new FaceDetectionListener() {
+        faceDetectionAnalyzer = new FaceDetectionAnalyzer(imageSize, targetSize, mBinding.detectionGraphic, new FaceDetectionListener() {
             @Override
-            public void onDetected(Face face, RectF targetRect, int rotate) {
+            public void onDetected(InputImage inputImage) {
                 takePhoto();
+                imageAnalysis.clearAnalyzer();
             }
         });
 
