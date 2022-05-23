@@ -44,7 +44,7 @@ public class GraphicOverlay extends View {
     private final Paint debugPaint;
     private final Paint debugTextPaint;
     private RectF faceBound;
-    private boolean isDebug = true;
+    private boolean isDebug;
 
     public GraphicOverlay(Context context) {
         this(context, null, 0);
@@ -85,6 +85,8 @@ public class GraphicOverlay extends View {
         debugTextPaint = new Paint(debugPaint);
         debugTextPaint.setStyle(Paint.Style.FILL);
         debugTextPaint.setTextSize(14 * density);
+
+        isDebug = false;
     }
 
     @Override
@@ -186,6 +188,10 @@ public class GraphicOverlay extends View {
     }
 
     private String debugText = "";
+
+    public void setDebug(boolean debug) {
+        isDebug = debug;
+    }
 
     public void setDebugText(String text) {
         debugText = text;

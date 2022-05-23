@@ -17,6 +17,6 @@ public class MainActivity extends AppCompatActivity {
         mBinding = ActivityMainBinding.inflate(getLayoutInflater());
         setContentView(mBinding.getRoot());
 
-        mBinding.btnGoCamera.setOnClickListener(v -> startActivity(new Intent(this, CameraActivity.class)));
+        mBinding.btnGoCamera.setOnClickListener(v -> startActivity(new Intent(this, TakePictureActivity.class)));
     }
 }
